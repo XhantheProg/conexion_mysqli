@@ -1,42 +1,75 @@
 <?php
 /*
 ================================================================================
-ARCHIVO 3: ver_eventos.php
-================================================================================
-PROPÓSITO:
-    Panel para visualizar todos los eventos registrados en el sistema.
-    
-QUÉ HACE:
-    1. Consulta TODOS los eventos de la base de datos
-    2. Muestra estadísticas (cuántos pendientes, cuántos enviados)
-    3. Muestra una tabla con todos los eventos ordenados por fecha
-    4. Indica visualmente cuáles están pendientes y cuáles ya se enviaron
-    5. Resalta los eventos que son para HOY
-    
-CUÁNDO SE USA:
-    - Para revisar qué eventos están programados
-    - Para verificar que un evento se registró correctamente
-    - Para ver cuáles correos ya se enviaron
-    - Para hacer seguimiento del sistema
-    
-IMPORTANTE:
-    - Este archivo es solo de CONSULTA (no modifica nada)
-    - Se accede manualmente desde el navegador
-    - Es útil para el administrador
+ARCHIVO: ver_eventos.php (CON CRUD INTEGRADO)
 ================================================================================
 */
 
-// ============================================
-// CONECTAR A LA BASE DE DATOS
-// ============================================
 require_once "php/connect.php";
+
+// ============================================
+// PROCESAR EDICIÓN (AJAX)
+// ============================================
+if (isset($_POST['action']) && $_POST['action'] == 'editar') {
+    $id = intval($_POST['id']);
+    $nombre = trim($_POST['nombre']);
+    $correo = trim($_POST['correo']);
+    $fecha_evento = trim($_POST['fecha_evento']);
+    $mensaje = trim($_POST['mensaje']);
+    
+    $stmt = $mysqli->prepare("UPDATE usuario SET nombre=?, correo=?, fecha_evento=?, mensaje=? WHERE id=?");
+    $stmt->bind_param("ssssi", $nombre, $correo, $fecha_evento, $mensaje, $id);
+    
+    if ($stmt->execute()) {
+        echo json_encode(['success' => true, 'message' => 'Evento actualizado correctamente']);
+    } else {
+        echo json_encode(['success' => false, 'message' => 'Error al actualizar']);
+    }
+    $stmt->close();
+    $mysqli->close();
+    exit;
+}
+
+// ============================================
+// PROCESAR ELIMINACIÓN (AJAX)
+// ============================================
+if (isset($_POST['action']) && $_POST['action'] == 'eliminar') {
+    $id = intval($_POST['id']);
+    
+    $stmt = $mysqli->prepare("DELETE FROM usuario WHERE id = ?");
+    $stmt->bind_param("i", $id);
+    
+    if ($stmt->execute() && $stmt->affected_rows > 0) {
+        echo json_encode(['success' => true, 'message' => 'Evento eliminado correctamente']);
+    } else {
+        echo json_encode(['success' => false, 'message' => 'Error al eliminar']);
+    }
+    $stmt->close();
+    $mysqli->close();
+    exit;
+}
 
 // ============================================
 // CONSULTAR TODOS LOS EVENTOS
 // ============================================
-// Ordenar por: fecha de evento (próximos primero) y estado de envío
 $sql = "SELECT * FROM usuario ORDER BY fecha_evento ASC, enviado ASC";
 $resultado = $mysqli->query($sql);
+
+// Calcular estadísticas
+$pendientes = 0;
+$enviados = 0;
+$eventos = [];
+$hoy = date('Y-m-d');
+
+while ($evento = $resultado->fetch_assoc()) {
+    $eventos[] = $evento;
+    if ($evento['enviado'] == 0) {
+        $pendientes++;
+    } else {
+        $enviados++;
+    }
+}
+$total = count($eventos);
 ?>
 
 <!DOCTYPE html>
@@ -46,9 +79,6 @@ $resultado = $mysqli->query($sql);
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Eventos Programados</title>
     <style>
-        /* ============================================
-           ESTILOS CSS - Diseño de la tabla
-           ============================================ */
         * {
             margin: 0;
             padding: 0;
@@ -63,7 +93,7 @@ $resultado = $mysqli->query($sql);
         }
         
         .container {
-            max-width: 1200px;
+            max-width: 1400px;
             margin: 0 auto;
             background: white;
             padding: 40px;
@@ -77,7 +107,7 @@ $resultado = $mysqli->query($sql);
             margin-bottom: 30px;
         }
         
-        /* Tarjetas de estadísticas */
+        /* Estadísticas */
         .stats {
             display: flex;
             gap: 20px;
@@ -93,32 +123,16 @@ $resultado = $mysqli->query($sql);
             text-align: center;
         }
         
-        .stat-card.pendientes {
-            background: #fff3cd;
-            border-left: 4px solid #ffc107;
-        }
-        
-        .stat-card.enviados {
-            background: #d4edda;
-            border-left: 4px solid #28a745;
-        }
-        
-        .stat-card.total {
-            background: #e3f2fd;
-            border-left: 4px solid #2196f3;
-        }
+        .stat-card.total { background: #e3f2fd; border-left: 4px solid #2196f3; }
+        .stat-card.pendientes { background: #fff3cd; border-left: 4px solid #ffc107; }
+        .stat-card.enviados { background: #d4edda; border-left: 4px solid #28a745; }
         
         .stat-card h2 {
             font-size: 36px;
             margin-bottom: 5px;
         }
         
-        .stat-card p {
-            color: #666;
-            font-size: 14px;
-        }
-        
-        /* Tabla de eventos */
+        /* Tabla */
         table {
             width: 100%;
             border-collapse: collapse;
@@ -147,7 +161,173 @@ $resultado = $mysqli->query($sql);
             background: #f5f5f5;
         }
         
-        /* Badges de estado */
+        /* Botones de acción */
+        .btn-accion {
+            padding: 6px 12px;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            font-size: 13px;
+            font-weight: 600;
+            margin: 2px;
+            transition: all 0.3s;
+        }
+        
+        .btn-editar {
+            background: #28a745;
+            color: white;
+        }
+        
+        .btn-editar:hover {
+            background: #218838;
+            transform: translateY(-2px);
+        }
+        
+        .btn-eliminar {
+            background: #dc3545;
+            color: white;
+        }
+        
+        .btn-eliminar:hover {
+            background: #c82333;
+            transform: translateY(-2px);
+        }
+        
+        /* Modal */
+        .modal {
+            display: none;
+            position: fixed;
+            z-index: 1000;
+            left: 0;
+            top: 0;
+            width: 100%;
+            height: 100%;
+            background-color: rgba(0, 0, 0, 0.6);
+            animation: fadeIn 0.3s;
+        }
+        
+        @keyframes fadeIn {
+            from { opacity: 0; }
+            to { opacity: 1; }
+        }
+        
+        .modal-content {
+            background-color: white;
+            margin: 5% auto;
+            padding: 30px;
+            border-radius: 15px;
+            width: 90%;
+            max-width: 600px;
+            box-shadow: 0 10px 40px rgba(0, 0, 0, 0.3);
+            animation: slideDown 0.3s;
+        }
+        
+        @keyframes slideDown {
+            from {
+                transform: translateY(-50px);
+                opacity: 0;
+            }
+            to {
+                transform: translateY(0);
+                opacity: 1;
+            }
+        }
+        
+        .close {
+            color: #aaa;
+            float: right;
+            font-size: 28px;
+            font-weight: bold;
+            cursor: pointer;
+            line-height: 20px;
+        }
+        
+        .close:hover {
+            color: #000;
+        }
+        
+        /* Formulario en modal */
+        .form-group {
+            margin-bottom: 20px;
+        }
+        
+        .form-group label {
+            display: block;
+            margin-bottom: 8px;
+            color: #555;
+            font-weight: 600;
+            font-size: 14px;
+        }
+        
+        .form-group input,
+        .form-group textarea {
+            width: 100%;
+            padding: 12px;
+            border: 2px solid #e0e0e0;
+            border-radius: 8px;
+            font-size: 15px;
+            font-family: inherit;
+            transition: border-color 0.3s;
+        }
+        
+        .form-group input:focus,
+        .form-group textarea:focus {
+            outline: none;
+            border-color: #667eea;
+            box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
+        }
+        
+        .form-group textarea {
+            resize: vertical;
+            min-height: 80px;
+        }
+        
+        .btn-submit {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 12px 30px;
+            border: none;
+            border-radius: 8px;
+            font-size: 16px;
+            font-weight: 600;
+            cursor: pointer;
+            width: 100%;
+            transition: all 0.3s;
+        }
+        
+        .btn-submit:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 5px 15px rgba(102, 126, 234, 0.3);
+        }
+        
+        /* Mensajes */
+        .mensaje {
+            padding: 15px;
+            border-radius: 8px;
+            margin-bottom: 20px;
+            border-left: 4px solid;
+            font-size: 14px;
+            animation: slideIn 0.5s;
+        }
+        
+        @keyframes slideIn {
+            from { transform: translateX(-20px); opacity: 0; }
+            to { transform: translateX(0); opacity: 1; }
+        }
+        
+        .mensaje.exito {
+            background: #d4edda;
+            color: #155724;
+            border-color: #28a745;
+        }
+        
+        .mensaje.error {
+            background: #f8d7da;
+            color: #721c24;
+            border-color: #dc3545;
+        }
+        
+        /* Badge */
         .badge {
             display: inline-block;
             padding: 5px 12px;
@@ -166,52 +346,24 @@ $resultado = $mysqli->query($sql);
             color: #155724;
         }
         
-        /* Resaltar eventos próximos */
-        .fecha-proxima {
-            background: #e3f2fd !important;
-        }
-        
-        .fecha-hoy {
-            background: #ffebee !important;
-            font-weight: bold;
-        }
-        
-        .fecha-pasada {
-            color: #999;
-        }
-        
-        /* Sin eventos */
-        .no-eventos {
-            text-align: center;
-            padding: 40px;
-            color: #999;
-        }
-        
-        /* Botones */
-        .btn-admin {
-            display: inline-block;
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-            color: white;
-            padding: 12px 30px;
-            border-radius: 8px;
-            text-decoration: none;
-            font-weight: 600;
-            margin-bottom: 20px;
-            transition: all 0.3s;
-        }
-        
-        .btn-admin:hover {
-            transform: translateY(-2px);
-            box-shadow: 0 5px 15px rgba(102, 126, 234, 0.3);
-        }
-        
-        .btn-ejecutar {
-            background: #28a745;
-            margin-left: 10px;
-        }
-        
-        .btn-ejecutar:hover {
-            box-shadow: 0 5px 15px rgba(40, 167, 69, 0.3);
+        /* Responsive */
+        @media (max-width: 768px) {
+            .container {
+                padding: 20px;
+            }
+            
+            table {
+                font-size: 12px;
+            }
+            
+            th, td {
+                padding: 8px;
+            }
+            
+            .btn-accion {
+                padding: 4px 8px;
+                font-size: 11px;
+            }
         }
     </style>
 </head>
@@ -219,37 +371,20 @@ $resultado = $mysqli->query($sql);
     <div class="container">
         <h1>📅 Eventos Programados</h1>
         
-        <!-- BOTONES DE ACCIÓN -->
+        <!-- Botones principales -->
         <div style="margin-bottom: 20px;">
-            <a href="admin.php" class="btn-admin">➕ Registrar Nuevo Evento</a>
-            <a href="enviar_correos.php" class="btn-admin btn-ejecutar" target="_blank">▶️ Ejecutar Envío Manual</a>
+            <a href="admin.php" style="display: inline-block; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; padding: 12px 30px; border-radius: 8px; text-decoration: none; font-weight: 600; margin-right: 10px;">
+                ➕ Registrar Nuevo Evento
+            </a>
+            <a href="enviar_correos.php" target="_blank" style="display: inline-block; background: #28a745; color: white; padding: 12px 30px; border-radius: 8px; text-decoration: none; font-weight: 600;">
+                ▶️ Ejecutar Envío Manual
+            </a>
         </div>
         
-        <?php
-        // ============================================
-        // CALCULAR ESTADÍSTICAS
-        // ============================================
-        $pendientes = 0;
-        $enviados = 0;
-        $eventos = [];
-        $hoy = date('Y-m-d');
+        <!-- Mensaje de respuesta -->
+        <div id="mensajeRespuesta"></div>
         
-        // Recorrer todos los eventos y contar
-        while ($evento = $resultado->fetch_assoc()) {
-            $eventos[] = $evento;
-            
-            // Contar enviados y pendientes
-            if ($evento['enviado'] == 0) {
-                $pendientes++;
-            } else {
-                $enviados++;
-            }
-        }
-        
-        $total = count($eventos);
-        ?>
-        
-        <!-- TARJETAS DE ESTADÍSTICAS -->
+        <!-- Estadísticas -->
         <div class="stats">
             <div class="stat-card total">
                 <h2><?php echo $total; ?></h2>
@@ -257,15 +392,15 @@ $resultado = $mysqli->query($sql);
             </div>
             <div class="stat-card pendientes">
                 <h2><?php echo $pendientes; ?></h2>
-                <p>⏳ Pendientes de Enviar</p>
+                <p>⏳ Pendientes</p>
             </div>
             <div class="stat-card enviados">
                 <h2><?php echo $enviados; ?></h2>
-                <p>✅ Ya Enviados</p>
+                <p>✅ Enviados</p>
             </div>
         </div>
         
-        <!-- TABLA DE EVENTOS -->
+        <!-- Tabla de eventos -->
         <?php if ($total > 0): ?>
             <table>
                 <thead>
@@ -276,171 +411,190 @@ $resultado = $mysqli->query($sql);
                         <th>Correo</th>
                         <th>Tipo de Evento</th>
                         <th>Estado</th>
+                        <th style="text-align: center; width: 160px;">Acciones</th>
                     </tr>
                 </thead>
                 <tbody>
                     <?php foreach ($eventos as $evento): 
-                        // ============================================
-                        // DETERMINAR CLASE CSS SEGÚN LA FECHA
-                        // ============================================
-                        $fecha_evento = $evento['fecha_evento'];
-                        $es_hoy = ($fecha_evento == $hoy);
-                        $es_proximo = ($fecha_evento > $hoy && $evento['enviado'] == 0);
-                        $es_pasado = ($fecha_evento < $hoy);
-                        
-                        // Asignar clase CSS
-                        $clase_fila = '';
-                        if ($es_hoy) {
-                            $clase_fila = 'fecha-hoy';
-                        } elseif ($es_proximo) {
-                            $clase_fila = 'fecha-proxima';
-                        }
+                        $es_hoy = ($evento['fecha_evento'] == $hoy);
                     ?>
-                        <tr class="<?php echo $clase_fila; ?>">
-                            <!-- ID del evento -->
+                        <tr>
                             <td><?php echo $evento['id']; ?></td>
-                            
-                            <!-- Nombre del cliente -->
                             <td><strong><?php echo htmlspecialchars($evento['nombre']); ?></strong></td>
-                            
-                            <!-- Fecha del evento -->
-                            <td class="<?php echo $es_pasado ? 'fecha-pasada' : ''; ?>">
+                            <td>
                                 <?php echo date('d/m/Y', strtotime($evento['fecha_evento'])); ?>
-                                
-                                <!-- Indicador si es HOY -->
                                 <?php if ($es_hoy): ?>
-                                    <span style="color: red; font-weight: bold; margin-left: 5px;">⚡ HOY</span>
+                                    <span style="color: red; font-weight: bold;">⚡ HOY</span>
                                 <?php endif; ?>
                             </td>
-                            
-                            <!-- Correo electrónico -->
                             <td><?php echo htmlspecialchars($evento['correo']); ?></td>
-                            
-                            <!-- Tipo de evento -->
                             <td><?php echo htmlspecialchars($evento['mensaje']); ?></td>
-                            
-                            <!-- Estado de envío -->
                             <td>
                                 <?php if ($evento['enviado'] == 1): ?>
-                                    <!-- YA SE ENVIÓ -->
                                     <span class="badge enviado">✅ Enviado</span>
-                                    <br>
-                                    <small style="color: #999; font-size: 11px;">
-                                        Enviado el: <?php echo date('d/m/Y H:i', strtotime($evento['fecha_envio'])); ?>
+                                    <br><small style="color: #999; font-size: 11px;">
+                                        <?php echo date('d/m/Y H:i', strtotime($evento['fecha_envio'])); ?>
                                     </small>
                                 <?php else: ?>
-                                    <!-- AÚN NO SE HA ENVIADO -->
                                     <span class="badge pendiente">⏳ Pendiente</span>
-                                    <?php if ($es_hoy): ?>
-                                        <br>
-                                        <small style="color: red; font-size: 11px;">
-                                            Se enviará hoy
-                                        </small>
-                                    <?php endif; ?>
                                 <?php endif; ?>
+                            </td>
+                            <td style="text-align: center;">
+                                <button class="btn-accion btn-editar" 
+                                        onclick="abrirModalEditar(<?php echo htmlspecialchars(json_encode($evento)); ?>)">
+                                    ✏️ Editar
+                                </button>
+                                <button class="btn-accion btn-eliminar" 
+                                        onclick="eliminarEvento(<?php echo $evento['id']; ?>, '<?php echo htmlspecialchars($evento['nombre']); ?>')">
+                                    🗑️ Eliminar
+                                </button>
                             </td>
                         </tr>
                     <?php endforeach; ?>
                 </tbody>
             </table>
-            
-            <!-- LEYENDA -->
-            <div style="margin-top: 20px; padding: 15px; background: #f5f5f5; border-radius: 8px;">
-                <strong>Leyenda:</strong>
-                <ul style="margin: 10px 0 0 20px; color: #666; font-size: 14px;">
-                    <li><span style="color: red;">⚡ HOY</span> - Eventos programados para hoy (se enviarán automáticamente)</li>
-                    <li style="background: #e3f2fd; display: inline-block; padding: 2px 8px; margin-top: 5px;">Fondo azul</span> - Eventos próximos pendientes de enviar</li>
-                    <li style="background: #ffebee; display: inline-block; padding: 2px 8px; margin-top: 5px;">Fondo rojo</span> - Eventos para HOY</li>
-                </ul>
-            </div>
-        
         <?php else: ?>
-            <!-- NO HAY EVENTOS REGISTRADOS -->
-            <div class="no-eventos">
-                <h2 style="color: #999; margin-bottom: 10px;">📭</h2>
-                <p style="font-size: 18px; margin-bottom: 10px;">No hay eventos registrados</p>
-                <p style="margin-top: 10px;">
-                    <a href="admin.php" style="color: #667eea; text-decoration: none; font-weight: 600;">
-                        ➕ Registra tu primer evento
-                    </a>
-                </p>
+            <div style="text-align: center; padding: 40px; color: #999;">
+                <h2>📭</h2>
+                <p>No hay eventos registrados</p>
             </div>
         <?php endif; ?>
-        
-        <!-- INFORMACIÓN ADICIONAL -->
-        <div style="margin-top: 30px; padding: 20px; background: #f9f9f9; border-radius: 8px; border-left: 4px solid #667eea;">
-            <h3 style="color: #333; margin-bottom: 10px;">ℹ️ Información del Sistema</h3>
-            <ul style="color: #666; line-height: 1.8; font-size: 14px;">
-                <li><strong>Fecha actual del sistema:</strong> <?php echo date('d/m/Y H:i:s'); ?></li>
-                <li><strong>Eventos pendientes:</strong> <?php echo $pendientes; ?> correos por enviar</li>
-                <li><strong>Eventos para hoy:</strong> 
-                    <?php 
-                    $hoy_count = 0;
-                    foreach ($eventos as $e) {
-                        if ($e['fecha_evento'] == $hoy && $e['enviado'] == 0) {
-                            $hoy_count++;
-                        }
-                    }
-                    echo $hoy_count;
-                    ?>
-                </li>
-                <li><strong>Hora de ejecución automática:</strong> 8:00 AM (configurado en CRON)</li>
-            </ul>
-        </div>
-        
-        <!-- INSTRUCCIONES -->
-        <div style="margin-top: 20px; padding: 15px; background: #fff3cd; border-radius: 8px; border-left: 4px solid #ffc107;">
-            <h4 style="color: #856404; margin-bottom: 10px;">⚙️ ¿Cómo funciona el sistema?</h4>
-            <ol style="color: #856404; line-height: 1.8; font-size: 14px; margin-left: 20px;">
-                <li>El administrador registra eventos en <strong>admin.php</strong></li>
-                <li>Los eventos se guardan con estado "Pendiente" (enviado = 0)</li>
-                <li>El script <strong>enviar_correos.php</strong> se ejecuta automáticamente todos los días a las 8:00 AM</li>
-                <li>El script busca eventos cuya fecha sea HOY y que NO se hayan enviado</li>
-                <li>Envía correos a cada uno y los marca como "Enviado" (enviado = 1)</li>
-            </ol>
-            <p style="color: #856404; margin-top: 10px; font-size: 14px;">
-                <strong>Nota:</strong> Para probar manualmente, haz clic en "▶️ Ejecutar Envío Manual"
-            </p>
+    </div>
+    
+    <!-- MODAL DE EDICIÓN -->
+    <div id="modalEditar" class="modal">
+        <div class="modal-content">
+            <span class="close" onclick="cerrarModal()">&times;</span>
+            <h2 style="margin-bottom: 20px; color: #333;">✏️ Editar Evento</h2>
+            
+            <form id="formEditar" onsubmit="guardarEdicion(event)">
+                <input type="hidden" id="edit_id" name="id">
+                
+                <div class="form-group">
+                    <label>👤 Nombre del Cliente:</label>
+                    <input type="text" id="edit_nombre" name="nombre" required>
+                </div>
+                
+                <div class="form-group">
+                    <label>📧 Correo Electrónico:</label>
+                    <input type="email" id="edit_correo" name="correo" required>
+                </div>
+                
+                <div class="form-group">
+                    <label>📅 Fecha del Evento:</label>
+                    <input type="date" id="edit_fecha" name="fecha_evento" required>
+                </div>
+                
+                <div class="form-group">
+                    <label>📝 Tipo de Evento:</label>
+                    <textarea id="edit_mensaje" name="mensaje" required></textarea>
+                </div>
+                
+                <button type="submit" class="btn-submit">💾 Guardar Cambios</button>
+            </form>
         </div>
     </div>
+    
+    <script>
+        // ============================================
+        // ABRIR MODAL DE EDICIÓN
+        // ============================================
+        function abrirModalEditar(evento) {
+            document.getElementById('edit_id').value = evento.id;
+            document.getElementById('edit_nombre').value = evento.nombre;
+            document.getElementById('edit_correo').value = evento.correo;
+            document.getElementById('edit_fecha').value = evento.fecha_evento;
+            document.getElementById('edit_mensaje').value = evento.mensaje;
+            
+            document.getElementById('modalEditar').style.display = 'block';
+        }
+        
+        // ============================================
+        // CERRAR MODAL
+        // ============================================
+        function cerrarModal() {
+            document.getElementById('modalEditar').style.display = 'none';
+        }
+        
+        // Cerrar modal al hacer clic fuera
+        window.onclick = function(event) {
+            const modal = document.getElementById('modalEditar');
+            if (event.target == modal) {
+                cerrarModal();
+            }
+        }
+        
+        // ============================================
+        // GUARDAR EDICIÓN (AJAX)
+        // ============================================
+        function guardarEdicion(event) {
+            event.preventDefault();
+            
+            const formData = new FormData(document.getElementById('formEditar'));
+            formData.append('action', 'editar');
+            
+            fetch('ver_eventos.php', {
+                method: 'POST',
+                body: formData
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    mostrarMensaje(data.message, 'exito');
+                    cerrarModal();
+                    setTimeout(() => location.reload(), 1500);
+                } else {
+                    mostrarMensaje(data.message, 'error');
+                }
+            })
+            .catch(error => {
+                mostrarMensaje('Error de conexión', 'error');
+            });
+        }
+        
+        // ============================================
+        // ELIMINAR EVENTO
+        // ============================================
+        function eliminarEvento(id, nombre) {
+            if (!confirm(`⚠️ ¿Estás seguro de eliminar este evento?\n\nCliente: ${nombre}\n\n⚠️ Esta acción NO se puede deshacer.`)) {
+                return;
+            }
+            
+            const formData = new FormData();
+            formData.append('action', 'eliminar');
+            formData.append('id', id);
+            
+            fetch('ver_eventos.php', {
+                method: 'POST',
+                body: formData
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    mostrarMensaje(data.message, 'exito');
+                    setTimeout(() => location.reload(), 1500);
+                } else {
+                    mostrarMensaje(data.message, 'error');
+                }
+            })
+            .catch(error => {
+                mostrarMensaje('Error de conexión', 'error');
+            });
+        }
+        
+        // ============================================
+        // MOSTRAR MENSAJES
+        // ============================================
+        function mostrarMensaje(texto, tipo) {
+            const div = document.getElementById('mensajeRespuesta');
+            div.innerHTML = `<div class="mensaje ${tipo}">${tipo === 'exito' ? '✅' : '⚠️'} ${texto}</div>`;
+            
+            setTimeout(() => {
+                div.innerHTML = '';
+            }, 5000);
+        }
+    </script>
 </body>
 </html>
 
-<?php 
-// ============================================
-// CERRAR CONEXIÓN A LA BASE DE DATOS
-// ============================================
-$mysqli->close(); 
-?>
-
-<!--
-================================================================================
-ARCHIVO 3: ver_eventos.php - RESUMEN
-================================================================================
-
-QUÉ MUESTRA ESTA PÁGINA:
-    ✅ Estadísticas generales (total, pendientes, enviados)
-    ✅ Tabla con todos los eventos
-    ✅ Estado de cada evento (pendiente o enviado)
-    ✅ Resalta visualmente los eventos importantes
-    ✅ Información del sistema
-    ✅ Instrucciones de uso
-
-COLORES Y INDICADORES:
-    🔵 Fondo azul = Evento próximo pendiente
-    🔴 Fondo rojo = Evento para HOY
-    ⚡ HOY = Se enviará hoy automáticamente
-    ✅ Enviado = Ya se envió el correo
-    ⏳ Pendiente = Esperando la fecha
-
-ACCIONES DISPONIBLES:
-    1. Ver todos los eventos registrados
-    2. Ir a admin.php para registrar nuevos
-    3. Ejecutar enviar_correos.php manualmente para probar
-
-USO RECOMENDADO:
-    - Revisa esta página después de registrar eventos
-    - Verifica que los correos se estén enviando
-    - Monitorea el estado del sistema
-================================================================================
--->
+<?php $mysqli->close(); ?>
