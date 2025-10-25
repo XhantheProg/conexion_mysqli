@@ -90,16 +90,16 @@ while ($evento = $resultado->fetch_assoc()) { //fetch_assoc obtiene una fila com
         $mail->send();
         
         // Marcar como enviado en la BD
-        $sqlUpdate = "UPDATE usuario SET enviado = 1, fecha_envio = NOW() WHERE id = ?";
-        $stmtUpdate = $mysqli->prepare($sqlUpdate);
-        $stmtUpdate->bind_param("i", $evento['id']);
-        $stmtUpdate->execute();
-        $stmtUpdate->close();
+        $sqlUpdate = "UPDATE usuario SET enviado = 1, fecha_envio = NOW() WHERE id = ?"; // Actualizar campo 'enviado' a 1 (ENVIADO)
+        $stmtUpdate = $mysqli->prepare($sqlUpdate); // Preparar la consulta
+        $stmtUpdate->bind_param("i", $evento['id']); // Vincular el ID del evento
+        $stmtUpdate->execute(); // Ejecutar la actualización
+        $stmtUpdate->close(); // Cerrar statement de actualización
         
         echo "✅ Correo enviado exitosamente\n";
         $enviados++;
         
-    } catch (Exception $e) {
+    } catch (Exception $e) { // Manejo de errores
         echo "❌ Error al enviar: {$mail->ErrorInfo}\n";
         $errores++;
     }
