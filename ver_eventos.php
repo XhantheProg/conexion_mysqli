@@ -49,7 +49,7 @@ $resultado = $mysqli->query($sql);
     <!-- Estilos internos para la página -->
     <style>
         /* ============================================
-           ESTILOS CSS - Diseño de la tabla
+           ESTILOS CSS - Diseño de la tablaa
            ============================================ */
         * {
             margin: 0;
