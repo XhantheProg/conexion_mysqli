@@ -21,17 +21,17 @@ $hoy = date('Y-m-d');
 echo "Buscando eventos para hoy: $hoy\n";
 
 // Buscar eventos de HOY que NO se han enviado
-$sql = "SELECT * FROM usuario WHERE fecha_evento = ? AND enviado = 0";
-$stmt = $mysqli->prepare($sql);
-$stmt->bind_param("s", $hoy);
-$stmt->execute();
-$resultado = $stmt->get_result();
+$sql = "SELECT * FROM usuario WHERE fecha_evento = ? AND enviado = 0"; // El campo 'enviado' se guarda en 0 (NO enviado)
+$stmt = $mysqli->prepare($sql); // Preparar la consulta
+$stmt->bind_param("s", $hoy); // Vincular el parámetro
+$stmt->execute(); // Ejecutar la consulta
+$resultado = $stmt->get_result(); // Obtener resultados
 
-$enviados = 0;
-$errores = 0;
+$enviados = 0; // Contador de correos enviados
+$errores = 0; // Contador de errores
 
 // Recorrer cada evento de hoy
-while ($evento = $resultado->fetch_assoc()) {
+while ($evento = $resultado->fetch_assoc()) { //fetch_assoc obtiene una fila como un array asociativo
     
     echo "\n--- Procesando evento ID: {$evento['id']} ---\n";
     echo "Cliente: {$evento['nombre']}\n";
